@@ -1,8 +1,8 @@
 ---
 title: Cloudflare Workers で fetcher = fetch と書くと Illegal invocation になる
 slug: cloudflare-workers-fetch-illegal-invocation
-date: 2026-09-05
-modified_time: 2026-09-05
+date: 2026-09-06
+modified_time: 2026-09-06
 description: テストのために fetch を差し替えられるクラスを書いたところ、ローカルでは動くのに Cloudflare Workers 上でだけ Illegal invocation で失敗しました。8 通りの呼び出し方を試してエラーになる条件を切り分け、workerd が this を確かめている仕組みと、直し方をまとめます。
 icon: 🥏
 icon_url: /icons/flying_disc_flat.svg
@@ -140,7 +140,7 @@ flowchart TB
 
 Workers の fetch は、JavaScript で書かれた関数ではありません。Workers を動かしているランタイムの workerd は C++ で実装されていて、fetch や caches などのグローバル API は C++ のオブジェクトのメソッドとして JavaScript へ公開されています。コードは、メソッドを V8 の FunctionTemplate として登録するときに Signature を一緒に渡していました([resource.h](https://github.com/cloudflare/workerd/blob/main/src/workerd/jsg/resource.h) から引用)。
 
-```cpp:src/workerd/jsg/resource.h
+```cpp src/workerd/jsg/resource.h
 prototype->Set(isolate, name,
     v8::FunctionTemplate::New(isolate,
         &MethodCallback<TypeWrapper, name, isContext, Self, decltype(method),
@@ -153,7 +153,7 @@ prototype->Set(isolate, name,
 
 V8 が出すこのエラーの文面は、本来 Illegal invocation の 1 行だけです。workerd は V8 にパッチを当てて、ドキュメントの URL を付け足していました。
 
-```diff:patches/v8/0012-Update-illegal-invocation-error-message-in-v8.patch
+```diff patches/v8/0012-Update-illegal-invocation-error-message-in-v8.patch
 -  T(IllegalInvocation, "Illegal invocation")                                   \
 +  T(IllegalInvocation,                                                         \
 +    "Illegal invocation: function called with incorrect `this` reference. "    \
@@ -189,7 +189,7 @@ bun の fetch は JavaScript のランタイムが用意する普通の関数で
 
 修正は 1 行です。何も渡されなかったときに使う fetcher を、レシーバがグローバルオブジェクトのまま動く関数へ変更します。
 
-```diff:src/client.ts
+```diff src/client.ts
   constructor(
 -   fetcher: Fetcher = fetch,
 +   // Workers の fetch はレシーバが globalThis 以外だと呼び出せないため、関数で包む
