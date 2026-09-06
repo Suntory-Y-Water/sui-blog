@@ -4,8 +4,8 @@ slug: cloudflare-workers-builds-preview-trigger-build-variables
 date: 2026-09-06
 modified_time: 2026-09-06
 description: Bun 1.4 で bun.lock の形式が 2 に上がり、Cloudflare Workers Builds の非本番ブランチのビルドだけが止まりました。ビルド環境の Bun が古いことが原因でしたが、ダッシュボードで BUN_VERSION を設定しても直りません。ビルド設定が本番とプレビューの 2 つのトリガーに分かれて保存されている仕組みと、REST API での修正手順を紹介します。
-icon: 🧐
-icon_url: /icons/face_with_monocle_flat.svg
+icon: 👯
+icon_url: 
 tags:
   - CloudflareWorkers
   - Bun
@@ -14,9 +14,9 @@ tags:
 
 Cloudflare Workers Builds は、GitHub のリポジトリと連携させておくと、push のたびにビルドとデプロイを実行してくれます。ビルドに使う変数は、ダッシュボードの「設定 > ビルド > 変数とシークレット」から追加できます。私はここに `BUN_VERSION` を入れて、ビルド環境の Bun のバージョンを固定していました。
 
-`main` へのマージは通り続けているのに、非本番ブランチへ push したビルドだけが依存関係のインストールで止まるようになりました。同じリポジトリ、同じ `bun.lock`、同じビルドコマンドです。違うのはブランチだけでした。
+Bun を 1.4 系へ上げたときも、この欄の値を書き換えました。`main` へマージしたビルドは成功します。ところが `main` 以外のブランチへ push したビルドだけは、依存関係のインストールで止まったままでした。同じリポジトリ、同じ `bun.lock`、同じビルドコマンドで、違いはブランチだけです。
 
-原因は 2 つ重なっていました。Bun 1.4 でロックファイルの形式が変わったこと、そして Workers Builds のビルド設定が本番用とプレビュー用の 2 つに分かれて保存されていることです。この記事では、失敗の切り分けから REST API での修正までを紹介します。
+原因は 2 つ重なっていました。Bun 1.4 でロックファイルの形式が変わったこと、そして Workers Builds のビルド設定が本番用とプレビュー用の 2 つに分かれて保存されていることです。この記事では、失敗の切り分けから REST API での修正までを書きます。
 
 <!-- textlint-disable preset-ja-technical-writing/no-unmatched-pair -->
 
@@ -44,19 +44,19 @@ error: lockfile had changes, but lockfile is frozen
 Failed: error occurred while installing tools or dependencies
 ```
 
-`Unknown lockfile version` は、Bun が `bun.lock` の `lockfileVersion` を認識できないときのエラーです。ロックファイルには 2 と書いてあり、それを読もうとしている Bun は 1.2.15 でした。
+`bun.lock` には形式の番号があり、Bun のリファレンスでは [`lockfileVersion`](https://bun.com/reference/bun/BunLockFile/lockfileVersion) の型が `0 | 1 | 2` です。`Unknown lockfile version` は、そこに書かれた番号をその Bun が知らないときのエラーでした。ログのロックファイルは 2、読もうとした Bun は 1.2.15 です。
 
-手がかりは 1 行目の `Detected the following tools from environment:` でした。ここに出るのが、そのビルドで使われる Bun のバージョンです。`main` へ push したときのビルドでは、同じ行が `bun@1.4.0` になっていました。ブランチによって Bun のバージョンが変わっていたことになります。
+もう 1 か所、`Detected the following tools from environment:` の行には、そのビルドで使われる Bun と Node.js のバージョンが出ます。ここが `bun@1.2.15` です。`main` へ push したときのビルドで同じ行を見ると `bun@1.4.0` でした。ブランチによって、ビルド環境に入る Bun が違っていたことになります。
 
-## `bun.lock` の形式が変わった境目
+## `bun.lock` の形式が 2 に上がった境目
 
-Bun 1.4.0 は 2026 年 8 月 19 日にリリースされました。破壊的変更の一覧である [oven-sh/bun#28792](https://github.com/oven-sh/bun/issues/28792) に、次の項目があります。
+Bun 1.4.0 は 2026 年 8 月 19 日にリリースされました。破壊的変更をまとめた [oven-sh/bun#28792](https://github.com/oven-sh/bun/issues/28792) に、次の項目があります。
 
-> `bun.lock` default `lockfileVersion` is now `2` (#31539). （中略）Existing v0/v1 lockfiles continue to load. Older Bun versions cannot read v2 lockfiles.
+> `bun.lock` default `lockfileVersion` is now `2` (#31539). (中略)Existing v0/v1 lockfiles continue to load. Older Bun versions cannot read v2 lockfiles.
 
-新しい Bun は古い形式のロックファイルを読めますが、古い Bun は新しい形式を読めません。
+新しい Bun は古い形式のロックファイルを読めますが、古い Bun は新しい形式を読めません。互換性は片方向です。
 
-境目のバージョンを、手元で確かめました。依存を `is-number@7.0.0` だけにした同じ `package.json` を 2 つのディレクトリに置き、片方を Bun 1.3.14、もう片方を Bun 1.4.0 でインストールします。生成された `bun.lock` の 2 行目が比較の対象です。
+境目のバージョンを手元で確かめました。依存を `is-number@7.0.0` だけにした同じ `package.json` を 2 つのディレクトリに置き、片方を Bun 1.3.14、もう片方を Bun 1.4.0 でインストールします。生成された `bun.lock` の 2 行目を見比べます。
 
 ```bash
 bunx bun@1.3.14 install --cwd probe/bun-1.3.14
@@ -76,7 +76,7 @@ head -2 probe/bun-1.3.14/bun.lock probe/bun-1.4.0/bun.lock
 
 1.3 系の最終版である 1.3.14 はまだ 1 を書き、2 を書き始めるのは 1.4 からでした。同じ結果は [vercel/turborepo の Discussion #13126](https://github.com/vercel/turborepo/discussions/13126) でも報告されています。
 
-Cloudflare のビルドログと同じエラーは、Cloudflare を経由しなくても手元で出せました。形式 2 の `bun.lock` と、それに対応する `package.json` を `repro/` へ置き、古い Bun でインストールを実行します。
+Cloudflare のビルドログと同じエラーは、Cloudflare を経由しなくても手元で出せます。形式 2 の `bun.lock` と、それに対応する `package.json` を `repro/` へ置き、古い Bun でインストールを実行しました。
 
 ```bash
 bunx bun@1.2.15 install --cwd repro --frozen-lockfile
@@ -96,21 +96,19 @@ error: lockfile had changes, but lockfile is frozen
 
 ビルドログと 1 行も違いません。失敗の直接の原因は、形式 2 のロックファイルを Bun 1.2.15 が読めないことでした。
 
-`bun.lock` の形式は、それを書き出した Bun のバージョンで決まります。ローカルの Bun を 1.4 系へ上げて `bun install` を一度実行すれば、ロックファイルは形式 2 に書き換わります。依存更新の自動化に任せていても、自分で `bun install` を実行しても、結果は同じです。リポジトリ側が 1.4 に移った時点で、古い Bun を使う CI やホスティングは止まります。
+`bun.lock` の形式を決めるのは、それを書き出した Bun のバージョンです。手元の Bun を 1.4 系へ上げて `bun install` を一度実行すると、ロックファイルは形式 2 に書き換わり、その差分がコミットに乗ります。リポジトリが形式 2 へ移った時点で、古い Bun でインストールする環境は止まります。
 
-## Cloudflare のビルド環境に入っている Bun
+## ビルド環境の Bun のバージョンを決める場所
 
-Workers Builds のビルドイメージに入っている Bun の既定バージョンは 1.2.15 です。[Build image のドキュメント](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)には、既定バージョンの表が「Runtime」と「Tools and languages」の 2 つに分かれて載っています。
+Workers Builds のビルドイメージに最初から入っている Bun は 1.2.15 です。[Build image のドキュメント](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)に、ツールごとの既定バージョンと、それを上書きする方法が載っています。
 
-Runtime の表には「Environment variable」と「File」の 2 列があります。File の列に入るのは、リポジトリに置くとバージョンを指定できるファイルの名前です。Node.js には `.nvmrc` と `.node-version`、Python には `.python-version` と `runtime.txt` が並んでいます。
+上書きの手段は 2 通りあります。ビルド変数で指定するか、決められた名前のファイルをリポジトリに置くかです。ファイル名の一覧が載っているのはランタイムの表だけで、Node.js には `.nvmrc` と `.node-version`、Python には `.python-version` と `runtime.txt` が並んでいます。Bun があるのはもう一方の表で、そちらにはファイル名の列そのものがありません。Bun に用意されていた手段は、ビルド変数 `BUN_VERSION` だけでした。
 
-Bun があるのは、もう一方の Tools and languages の表です。こちらの表には File の列そのものがなく、載っているのは `BUN_VERSION` という環境変数の名前だけでした。`BUN_VERSION` に値を入れると、その版の Bun がビルド環境に入ります。ローカルの Bun を `mise.toml` で固定していても、Cloudflare のビルド環境は `mise.toml` を読みません。
+リポジトリ側から Bun を指定したいという要望は [Cloudflare Community](https://community.cloudflare.com/t/support-bun-version-for-build-images/849333) に出ていますが、この記事を書いている時点で `.bun-version` は未対応です。`package.json` の `packageManager` フィールドを Workers Builds が読むかどうかは、ドキュメントに記載がなく、私も試していません。
 
-リポジトリに置いたファイルから Bun のバージョンを指定する手段は、ドキュメントを読むかぎり見当たりませんでした。`.bun-version` に対応してほしいという要望が [Cloudflare Community](https://community.cloudflare.com/t/support-bun-version-for-build-images/849333) に出ていますが、この記事を書いている時点では未対応です。`package.json` の `packageManager` フィールドを Workers Builds が読むかどうかは、ドキュメントに記載がなく、私も試していません。
+このリポジトリでは `mise.toml` に Bun のバージョンを書いて固定していますが、Cloudflare のビルド環境はこのファイルを見ません。ビルド環境を 1.4 系にするには `BUN_VERSION` を使うしかない、ということになります。そしてその `BUN_VERSION` は、ダッシュボードから設定済みでした。`main` のビルドが `bun@1.4.0` で動いていたのも、この値が届いていたからです。それでも非本番ブランチだけは 1.2.15 のままでした。
 
-そして `BUN_VERSION` は、既にダッシュボードから設定してありました。それでも非本番ブランチのビルドは 1.2.15 で動いていました。
-
-## ビルド設定が保持される単位
+## ビルド変数が保存される単位
 
 [Workers Builds API reference](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/) に、次のように書かれています。
 
@@ -122,26 +120,26 @@ Workers Builds がビルド設定を持つ単位は「トリガー」です。1 
 
 > `environment_variables` — Build-time variables specific to this trigger
 
-ビルド変数が紐づく先は、Worker ではなくトリガーでした。一方、ダッシュボードの「変数とシークレット」の欄は 1 つしかありません。ビルド設定のページに 1 つだけ置かれた欄を見て、私はそこに入れた値がこの Worker のビルド全体に適用されるものだと考えていました。保存されていたのは本番トリガーの分だけです。
+ビルド変数が紐づく先は、Worker ではなくトリガーでした。一方、ダッシュボードの「変数とシークレット」の欄は 1 つしかありません。ビルド設定のページに 1 つだけ置かれた欄を見て、私はそこに入れた値がこの Worker のビルド全体に届くものだと思っていました。実際に保存されていたのは、本番トリガーの分だけです。
 
-REST API で 2 つのトリガーを取得すると、対象ブランチの条件が見分けの手がかりになります。
+REST API で 2 つのトリガーを取得して並べると、こうなっていました。
 
 | トリガー | `branch_includes` | `branch_excludes` | ビルド変数 |
 |---|---|---|---|
 | 本番 | `["main"]` | `[]` | `BUN_VERSION: 1.4.0` |
 | プレビュー | `["*"]` | `["main"]` | なし |
 
-プレビュートリガーには何も入っていませんでした。ここが空だと、ビルド環境の Bun は既定の 1.2.15 になります。`main` へのマージが通り続け、非本番ブランチだけが止まっていた理由がこれです。
+プレビュートリガーには何も入っていません。ここが空だと、ビルド環境の Bun は既定の 1.2.15 になります。`main` へのマージが成功し続け、非本番ブランチだけが止まっていた理由がこれです。
 
-プレビュートリガーの `BUN_VERSION` が空である状態は、Workers Builds を使い始めたときから続いていました。ロックファイルの形式が 1 だった間は Bun 1.2.15 でも読めていたため、表に出なかっただけです。形式が 2 に変わった日から、この設定の欠けが失敗として現れました。
+ロックファイルの形式が 1 だった間は、Bun 1.2.15 でも読めていました。プレビュートリガーが空のままでもビルドは成功していたので、この食い違いには気づきませんでした。
 
-ダッシュボードにはプレビュートリガーの変数を表示する場所も、編集する場所もありません。設定されているかどうかを画面から確かめられないため、ビルドログの `Detected the following tools from environment:` の行を見て初めて分かる状態でした。
+ダッシュボードには、プレビュートリガーの変数を表示する場所も、編集する場所もありません。設定されているかどうかを画面から確かめられず、ビルドログの `Detected the following tools from environment:` の行を見て初めて分かる状態でした。
 
 ## プレビュートリガーに `BUN_VERSION` を設定する
 
 ダッシュボードから操作できないので、REST API を使います。
 
-まず API トークンを用意します。[Builds API reference](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/) によれば、この API が受け付けるのはユーザー単位のトークンだけです。アカウント単位のトークンは `Invalid token` を返します。付ける権限は「Workers Builds Configuration: 編集」です。Worker のタグを API で調べる場合は「Workers Scripts: 読み取り」も足します。
+まず、「Workers Builds Configuration: 編集」の権限を付けた API トークンを作ります。Worker のタグを API で調べるなら「Workers Scripts: 読み取り」も必要です。[Builds API reference](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/) にあるとおり、この API が受け付けるのはユーザー単位のトークンだけで、アカウント単位のトークンには `Invalid token` が返ります。
 
 <!-- textlint-disable preset-ja-technical-writing/no-unmatched-pair -->
 
@@ -163,7 +161,7 @@ TAG=$(curl -s "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/work
   | jq -r '.result[] | select(.id=="my-worker") | .tag')
 ```
 
-このタグでトリガーの一覧を引きます。
+このタグを使って、トリガーの一覧を取得します。
 
 ```bash
 curl -s "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/builds/workers/$TAG/triggers" \
@@ -219,14 +217,6 @@ Workers Builds は、ビルド 1 件ごとの記録にその時点のビルド�
 | 修正前の非本番ブランチ | fail | `{}` | 1.2.15 |
 | 修正後の非本番ブランチ | success | `BUN_VERSION: 1.4.0` | 1.4.0 |
 
-なお、ビルドキャッシュを消す必要はありませんでした。両方のトリガーとも `build_caching_enabled` が `false` で、前回のインストール結果は残っていません。キャッシュを有効にしている場合は、古い Bun で作られた `node_modules` が残る可能性があるため、別の判断が要ります。
-
-## 残っている問題
-
-`BUN_VERSION` を 2 つのトリガーに入れたことで、非本番ブランチのビルドは通るようになりました。それでも、Bun のバージョンを決めている場所は 4 つあります。ローカルの `mise.toml`、GitHub Actions、本番トリガーのビルド変数、プレビュートリガーのビルド変数です。このうち後ろの 2 つはリポジトリの外にあり、片方は画面から確認できません。次に Bun のメジャーバージョンが上がったとき、同じ手順をもう一度踏むことになります。
-
-そこで、Workers Builds の Git 連携をやめて GitHub Actions からデプロイする案を検討しています。`main` は `bun run deploy`、それ以外は `bun run deploy:preview` を実行するワークフローを 1 本置けば、Bun のバージョンもデプロイコマンドもリポジトリ側で決まるはずです。ただし、プレビュー URL を PR に出す部分には気になる点が残っています。`wrangler versions upload --preview-alias` は、ブランチ名にスラッシュが含まれると失敗する既知の不具合（[cloudflare/workers-sdk#14345](https://github.com/cloudflare/workers-sdk/issues/14345)）を抱えています。ブランチの命名との相性を確かめてから移る予定です。
-
 ## まとめ
 
 - Bun 1.4.0 から `bun.lock` の `lockfileVersion` が 1 から 2 に上がる。1.3 系の最終版である 1.3.14 はまだ 1 を書く
@@ -241,7 +231,7 @@ Workers Builds は、ビルド 1 件ごとの記録にその時点のビルド�
 - [Build image · Cloudflare Workers docs](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)
 - [Build configuration · Cloudflare Workers docs](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
 - [Workers Builds API reference · Cloudflare Workers docs](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/)
+- [`BunLockFile.lockfileVersion` · Bun reference](https://bun.com/reference/bun/BunLockFile/lockfileVersion)
 - [List of breaking changes for 1.4 · oven-sh/bun #28792](https://github.com/oven-sh/bun/issues/28792)
 - [Bun lockfile version: 2 (Bun 1.4.0/canary) · vercel/turborepo Discussion #13126](https://github.com/vercel/turborepo/discussions/13126)
 - [Support .bun-version for build images · Cloudflare Community](https://community.cloudflare.com/t/support-bun-version-for-build-images/849333)
-- [`--preview-alias` fails with branch names containing slashes · cloudflare/workers-sdk #14345](https://github.com/cloudflare/workers-sdk/issues/14345)
