@@ -90,7 +90,7 @@ Claude Code の [`SessionStart` フック](https://code.claude.com/docs/en/hooks
 
 使うイベントは 3 つです。`Stop` で応答が終わった時刻をファイルに書き、`UserPromptSubmit` でその時刻からの経過を測り、`SessionStart` で記録を消します。標準入力の JSON を読む処理は [cc-hooks-ts](https://www.npmjs.com/package/cc-hooks-ts) に任せ、判定だけを書きました。
 
-```ts:~/.claude/scripts/typescript/cache-ttl-guard.ts
+```ts ~/.claude/scripts/typescript/cache-ttl-guard.ts
 #!/usr/bin/env -S bun run --silent
 import { createHash } from 'node:crypto';
 import {
@@ -253,7 +253,7 @@ bun add -d cc-hooks-ts@^2.1.251 pathe@^2.0.3
 
 `settings.json` には、3 つのイベントすべてに同じスクリプトを登録します。
 
-```json:~/.claude/settings.json
+```json ~/.claude/settings.json
 {
   "hooks": {
     "SessionStart": [
