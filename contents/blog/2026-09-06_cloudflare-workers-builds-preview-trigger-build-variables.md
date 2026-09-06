@@ -5,7 +5,7 @@ date: 2026-09-06
 modified_time: 2026-09-06
 description: Bun 1.4 で bun.lock の形式が 2 に上がり、Cloudflare Workers Builds の非本番ブランチのビルドだけが止まりました。ビルド環境の Bun が古いことが原因でしたが、ダッシュボードで BUN_VERSION を設定しても直りません。ビルド設定が本番とプレビューの 2 つのトリガーに分かれて保存されている仕組みと、REST API での修正手順を紹介します。
 icon: 👯
-icon_url: 
+icon_url: /icons/person_with_bunny_ears_flat.svg
 tags:
   - CloudflareWorkers
   - Bun

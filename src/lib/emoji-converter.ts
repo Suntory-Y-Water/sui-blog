@@ -73,6 +73,31 @@ function normalizeCodepoints(codepoints: string): string {
     .join(' ');
 }
 
+const BASE_PATH =
+  'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets';
+
+/**
+ * 人を表す先頭の語
+ *
+ * CLDR 名と FluentUI のディレクトリ名は、この位置の語だけが食い違うことがある。
+ * (例: 👯 の CLDR 名は "people with bunny ears" だがディレクトリは "Person with bunny ears")
+ */
+const PERSON_WORDS = new Set([
+  'people',
+  'person',
+  'man',
+  'woman',
+  'men',
+  'women',
+]);
+
+/**
+ * パスの各要素をURLエンコードする(ディレクトリ名の空白を%20にする)
+ */
+function encodePath(assetPath: string): string {
+  return assetPath.split('/').map(encodeURIComponent).join('/');
+}
+
 /**
  * 絵文字からFluentUI EmojiのURLを生成する
  *
@@ -94,28 +119,91 @@ async function generateFluentEmojiUrl({
   // ディレクトリ名: nameを最初の文字だけ大文字にして、残りは小文字
   // 例: "woman gesturing OK" → "Woman gesturing ok"
   const dirName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-  const encodedDirName = dirName.replace(/ /g, '%20');
 
-  const basePath =
-    'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets';
-  const flatPath = skin_tone_support ? 'Default/Flat' : 'Flat';
-  const suffix = skin_tone_support
-    ? `${slug}_flat_default.svg`
-    : `${slug}_flat.svg`;
+  // unicode-emoji-json が肌の色に対応していると言っていても、FluentUI 側に
+  // Default/Flat が用意されていないことがある(👯 は Flat だけ)。両方試す。
+  const skinToneVariant = {
+    flatPath: 'Default/Flat',
+    fileName: `${slug}_flat_default.svg`,
+  };
+  const plainVariant = { flatPath: 'Flat', fileName: `${slug}_flat.svg` };
+  const variants = skin_tone_support
+    ? [skinToneVariant, plainVariant]
+    : [plainVariant, skinToneVariant];
 
-  const url = `${basePath}/${encodedDirName}/${flatPath}/${suffix}`;
-
-  try {
-    const response = await fetch(url, { method: 'HEAD' });
-    if (response.ok) {
-      return url;
+  for (const { flatPath, fileName } of variants) {
+    const url = `${BASE_PATH}/${encodePath(`${dirName}/${flatPath}/${fileName}`)}`;
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      if (response.ok) {
+        return url;
+      }
+    } catch {
+      // fetch失敗時は次の候補、最後はフォールバックへ
     }
-  } catch {
-    // fetch失敗時はフォールバックへ
   }
 
   // フォールバック: GitHub APIでunicodeコードポイントから正しいディレクトリを検索
-  return await searchFluentEmojiUrl({ emoji, name, skin_tone_support });
+  return await searchFluentEmojiUrl({ emoji, name });
+}
+
+/**
+ * CLDR 名から FluentUI のディレクトリ候補を絞り込む
+ *
+ * ディレクトリ名は CLDR 名と一致しないことがある。
+ * (例: 🧙 の CLDR 名は "mage" だがディレクトリは "Person mage"、
+ * 👯 の CLDR 名は "people with bunny ears" だがディレクトリは "Person with bunny ears")
+ * 名前を含むディレクトリに加えて、人を表す先頭の語を落とした残りの語を
+ * すべて含むディレクトリも候補に入れる。
+ */
+function collectCandidateDirs({
+  name,
+  allDirNames,
+}: {
+  name: string;
+  allDirNames: string[];
+}): string[] {
+  const lowerName = name.toLowerCase();
+  const byName = allDirNames.filter((dirName) =>
+    dirName.toLowerCase().includes(lowerName),
+  );
+
+  const words = lowerName.split(' ');
+  const rest = PERSON_WORDS.has(words[0] ?? '') ? words.slice(1) : [];
+  const byRest =
+    rest.length === 0
+      ? []
+      : allDirNames.filter((dirName) => {
+          const lowerDirName = dirName.toLowerCase();
+          return rest.every((word) => lowerDirName.includes(word));
+        });
+
+  return [...new Set([...byName, ...byRest])];
+}
+
+/**
+ * ディレクトリ配下のFlatなSVGのパスを選ぶ
+ *
+ * 肌の色に対応したディレクトリは Default/Flat、そうでなければ Flat に入る。
+ * Dark/Flat などの肌の色つきは既定の見た目と異なるため選ばない。
+ */
+function pickFlatSvgPath({
+  dirName,
+  treePaths,
+}: {
+  dirName: string;
+  treePaths: string[];
+}): string | undefined {
+  const prefix = `assets/${dirName}/`;
+  const svgPaths = treePaths.filter(
+    (treePath) => treePath.startsWith(prefix) && treePath.endsWith('.svg'),
+  );
+
+  return (
+    svgPaths.find((treePath) =>
+      treePath.startsWith(`${prefix}Default/Flat/`),
+    ) ?? svgPaths.find((treePath) => treePath.startsWith(`${prefix}Flat/`))
+  );
 }
 
 /**
@@ -131,11 +219,9 @@ async function generateFluentEmojiUrl({
 async function searchFluentEmojiUrl({
   emoji,
   name,
-  skin_tone_support,
 }: {
   emoji: string;
   name: string;
-  skin_tone_support: boolean;
 }): Promise<string | null> {
   // 絵文字からunicodeコードポイントを計算 (例: "1f9d9 200d 2640")
   // FE0F は比較時に無視するため、ここでは除去した形で保持する
@@ -146,6 +232,7 @@ async function searchFluentEmojiUrl({
   // Git Trees API でリポジトリ全体のツリーを取得 (contents APIは1000件上限あり)
   const treeUrl =
     'https://api.github.com/repos/microsoft/fluentui-emoji/git/trees/main?recursive=1';
+  let treePaths: string[];
   let allDirNames: string[];
   try {
     const res = await fetch(treeUrl, {
@@ -158,6 +245,9 @@ async function searchFluentEmojiUrl({
       truncated: boolean;
       tree: Array<{ path: string; type: string }>;
     };
+    treePaths = data.tree
+      .filter((item) => item.type === 'blob')
+      .map((item) => item.path);
     // assets直下のディレクトリ名のみ抽出
     allDirNames = data.tree
       .filter(
@@ -168,15 +258,11 @@ async function searchFluentEmojiUrl({
     return null;
   }
 
-  // 絵文字のCLDR名を含むディレクトリに絞り込む
-  // 例: "mage" → ["Man mage", "Person mage", "Woman mage"]
-  const candidates = allDirNames.filter((dirName) =>
-    dirName.toLowerCase().includes(name.toLowerCase()),
-  );
+  const candidates = collectCandidateDirs({ name, allDirNames });
 
   for (const dirName of candidates) {
     try {
-      const metaUrl = `https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/${encodeURIComponent(dirName)}/metadata.json`;
+      const metaUrl = `${BASE_PATH}/${encodePath(`${dirName}/metadata.json`)}`;
       const metaRes = await fetch(metaUrl);
       if (!metaRes.ok) {
         continue;
@@ -188,22 +274,12 @@ async function searchFluentEmojiUrl({
         continue;
       }
 
-      // FlatディレクトリからSVGファイル名を取得
-      const flatPath = skin_tone_support ? 'Default/Flat' : 'Flat';
-      const flatApiUrl = `https://api.github.com/repos/microsoft/fluentui-emoji/contents/assets/${encodeURIComponent(dirName)}/${flatPath}`;
-      const flatRes = await fetch(flatApiUrl, {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      });
-      if (!flatRes.ok) {
-        continue;
-      }
-      const files = (await flatRes.json()) as Array<{ name: string }>;
-      const svgFile = files.find((f) => f.name.endsWith('.svg'));
-      if (!svgFile) {
+      const svgPath = pickFlatSvgPath({ dirName, treePaths });
+      if (!svgPath) {
         continue;
       }
 
-      return `https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/${dirName.replace(/ /g, '%20')}/${flatPath}/${svgFile.name}`;
+      return `https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/${encodePath(svgPath)}`;
     } catch {
       // 個別のディレクトリ取得失敗は無視して次の候補へ
     }
