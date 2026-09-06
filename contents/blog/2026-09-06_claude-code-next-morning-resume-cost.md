@@ -1,9 +1,9 @@
 ---
-title: Claude Code で翌朝の「さっきの続きやって」が一番高いのか確かめた
+title: Claude Code で「さっきの続きやって」が一番高いのか確かめた
 slug: claude-code-next-morning-resume-cost
 date: 2026-09-06
 modified_time: 2026-09-06
-description: Claude Code の利用状況を Cloudflare D1 にためています。3 か月半ぶんのデータで、「1 時間以上あけて同じセッションに戻る最初の入力が一番高い」が自分の環境でも成り立つのかを確かめました。60 分を境に何が変わるのか、何が金額を決めているのか、対策として書いたフックを扱います。
+description: Claude Code の利用状況を Cloudflare D1 にためています。3 か月半ぶんのデータで、「1 時間以上あけて同じセッションに戻る最初の入力が一番高い」が自分の環境でも成り立つのかを確かめました。
 icon: 🧾
 icon_url: /icons/receipt_flat.svg
 tags:
