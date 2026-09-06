@@ -19,6 +19,10 @@ const rehypePrettyCodeOptions: Options = {
   theme: 'material-theme-palenight',
   keepBackground: true,
   defaultLang: 'plaintext',
+  // keepBackground はインラインコードにもダークテーマの背景色・文字色を style 属性で
+  // 直接埋め込むため、ライトモードの本文中で明暗が反転して読みにくくなる。
+  // 素通しさせて markdown.css 側のテーマ連動スタイルを効かせる
+  bypassInlineCode: true,
   // ファイル名をtitle属性に変換
   // 例: utils.ts -> title="utils.ts"
   // 例: utils.ts {1-3} -> title="utils.ts" {1-3}

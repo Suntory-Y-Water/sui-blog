@@ -80,11 +80,16 @@
 /* Inline code - subtle background with emphasized border */
 .markdown-content :not(pre) > code {
   @apply relative rounded px-[0.3rem] py-[0.2rem] font-mono text-sm font-medium;
-  @apply bg-muted/50 ring-1 ring-border/50 text-foreground;
+  @apply ring-1 ring-border text-foreground;
+  /* --muted は --background との輝度差が 1.06:1 しかなくチップとして見分けられない。
+     本文色を 8% 混ぜてライト・ダークとも背景比 1.17 前後、文字比 10:1 以上にする */
+  background-color: color-mix(in oklab, var(--foreground) 8%, var(--background));
 }
 
+/* 詳細度でグローバルの `.dark :not(pre) > code` に勝たせるため、同じ値でも上書きが要る */
 .dark .markdown-content :not(pre) > code {
-  @apply bg-muted/20 ring-border/40;
+  @apply ring-border;
+  background-color: color-mix(in oklab, var(--foreground) 8%, var(--background));
 }
 
 .markdown-content h2 {
