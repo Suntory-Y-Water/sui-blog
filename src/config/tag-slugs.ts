@@ -18,6 +18,7 @@ export const TAG_SLUG_MAP: Record<string, string> = {
   Astro: 'astro',
   Biome: 'biome',
   BeautifulSoup: 'beautifulsoup',
+  Bun: 'bun',
   'chart.js': 'chartjs',
   ChatGPT: 'chatgpt',
   ChromeExtension: 'chrome-extension',
