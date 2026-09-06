@@ -104,6 +104,7 @@ export default {
 ```
 
 `bunx wrangler dev` で起動して `http://localhost:8787/` を開くと、8 通りの結果が JSON で返却されます。`https://example.com/` へのリクエストで、結果は次のとおりでした。
+使ったのは wrangler 4.129.0 (workerd 1.20260903.1) と bun 1.4.0 で、`compatibility_date` は 2026-09-01 です。
 
 | 呼び方 | workerd | bun |
 |---|---|---|
@@ -126,7 +127,7 @@ fetch の中身の this が何になるかは、関数をどう書いたかで�
 flowchart TB
     Direct["fetch(url)<br/>ドットの左に何もない"] --> R1["レシーバ<br/>globalThis"]
     Field["this.fetcher(url)<br/>ドットの左は ApiClient"] --> R2["レシーバ<br/>ApiClient のインスタンス"]
-    R1 --> Check{"workerd の検査<br/>レシーバは組み込みの<br/>グローバルオブジェクトか"}
+    R1 --> Check{"workerd の検査<br/>レシーバは fetch を<br/>取り出した元のオブジェクトか"}
     R2 --> Check
     Check -->|はい| OK["リクエストが飛ぶ"]
     Check -->|いいえ| NG["TypeError<br/>Illegal invocation"]
@@ -203,7 +204,7 @@ bun の fetch は JavaScript のランタイムが用意する普通の関数で
 
 ## まとめ
 
-- Cloudflare Workers で Illegal invocation が出る条件は、組み込みの API を呼ぶときのレシーバがグローバルオブジェクト以外になっていること
+- Cloudflare Workers の組み込み API は、取り出した元のオブジェクトをレシーバにして呼ぶ必要がある。fetch なら globalThis、`ctx.waitUntil` なら ctx
 - `const bare = fetch` のような変数への代入だけでは落ちない。落ちるのは、その関数を別のオブジェクトのプロパティに置き、`obj.method()` の形で呼んだとき
 - workerd の組み込み API は C++ オブジェクトのメソッドとして公開されており、呼び出しのたびにレシーバの型が確かめられる
 - 直し方は `fetch.bind(globalThis)` か `(input, init) => fetch(input, init)` のどちらかで、実測ではどちらも動く
