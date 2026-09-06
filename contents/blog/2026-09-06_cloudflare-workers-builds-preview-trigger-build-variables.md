@@ -48,7 +48,7 @@ Failed: error occurred while installing tools or dependencies
 
 もう 1 か所、`Detected the following tools from environment:` の行には、そのビルドで使われる Bun と Node.js のバージョンが出ます。ここが `bun@1.2.15` です。`main` へ push したときのビルドで同じ行を見ると `bun@1.4.0` でした。ブランチによって、ビルド環境に入る Bun が違っていたことになります。
 
-## `bun.lock` の形式が 2 に上がった境目
+## bun.lock の形式が 2 に上がった境目
 
 Bun 1.4.0 は 2026 年 8 月 19 日にリリースされました。破壊的変更をまとめた [oven-sh/bun#28792](https://github.com/oven-sh/bun/issues/28792) に、次の項目があります。
 
@@ -106,7 +106,7 @@ Workers Builds のビルドイメージに最初から入っている Bun は 1.
 
 リポジトリ側から Bun を指定したいという要望は [Cloudflare Community](https://community.cloudflare.com/t/support-bun-version-for-build-images/849333) に出ていますが、この記事を書いている時点で `.bun-version` は未対応です。`package.json` の `packageManager` フィールドを Workers Builds が読むかどうかは、ドキュメントに記載がなく、私も試していません。
 
-このリポジトリでは `mise.toml` に Bun のバージョンを書いて固定していますが、Cloudflare のビルド環境はこのファイルを見ません。ビルド環境を 1.4 系にするには `BUN_VERSION` を使うしかない、ということになります。そしてその `BUN_VERSION` は、ダッシュボードから設定済みでした。`main` のビルドが `bun@1.4.0` で動いていたのも、この値が届いていたからです。それでも非本番ブランチだけは 1.2.15 のままでした。
+このリポジトリでは `mise.toml` に Bun のバージョンを書いて固定していますが、Cloudflare のビルド環境はこのファイルを見ません。ビルド環境を 1.4 系にするには `BUN_VERSION` を使うしかない、ということになります。そしてその `BUN_VERSION` は、ダッシュボードから設定済みでした。`main` のビルドが `bun@1.4.0` で動いていたのも、この値が設定されていたからです。それでも非本番ブランチだけは 1.2.15 のままでした。
 
 ## ビルド変数が保存される単位
 
@@ -135,16 +135,16 @@ REST API で 2 つのトリガーを取得して並べると、こうなって�
 
 ダッシュボードには、プレビュートリガーの変数を表示する場所も、編集する場所もありません。設定されているかどうかを画面から確かめられず、ビルドログの `Detected the following tools from environment:` の行を見て初めて分かる状態でした。
 
-## プレビュートリガーに `BUN_VERSION` を設定する
+## プレビュートリガーに BUN_VERSION を設定する
 
 ダッシュボードから操作できないので、REST API を使います。
 
-まず、「Workers Builds Configuration: 編集」の権限を付けた API トークンを作ります。Worker のタグを API で調べるなら「Workers Scripts: 読み取り」も必要です。[Builds API reference](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/) にあるとおり、この API が受け付けるのはユーザー単位のトークンだけで、アカウント単位のトークンには `Invalid token` が返ります。
+まず、「Workers Builds Configuration: 編集」の権限を付けた API トークンを作ります。Worker のタグを API で調べるなら「Workers Scripts: 読み取り」も必要です。[Builds API reference](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/) にあるとおり、この API が受け付けるのはユーザー単位のトークンだけで、アカウント単位のトークンには `Invalid token` が返却されます。
 
 <!-- textlint-disable preset-ja-technical-writing/no-unmatched-pair -->
 
 >[!IMPORTANT]
->`wrangler login` で作られる OAuth トークンでは、Workers Builds の API は使えません。`wrangler whoami` が使うトークンでトリガー一覧を取得すると `{"code": 10000, "message": "Authentication error"}` が返ります。ダッシュボードの「API トークン」から別に作る必要があります。
+>`wrangler login` で作られる OAuth トークンでは、Workers Builds の API は使えません。`wrangler whoami` が使うトークンでトリガー一覧を取得すると `{"code": 10000, "message": "Authentication error"}` が返却されます。ダッシュボードの「API トークン」から別に作る必要があります。
 
 <!-- textlint-enable preset-ja-technical-writing/no-unmatched-pair -->
 
@@ -180,7 +180,7 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/builds/tri
   -H "Authorization: Bearer $CF_API_TOKEN"
 ```
 
-私の場合、プレビュートリガーが返したのは `{"result":{},"success":true,...}` です。本番トリガーの UUID で同じことをすると、`BUN_VERSION` が入っていました。この 2 つを並べれば、ダッシュボードで保存した値が片方にしか届いていないと分かります。
+私の場合、プレビュートリガーが返したのは `{"result":{},"success":true,...}` です。本番トリガーの UUID で同じことをすると、`BUN_VERSION` が入っていました。この 2 つを並べれば、ダッシュボードで保存した値が片方にしか設定されていないことが分かります。
 
 設定は同じエンドポイントへの `PATCH` です。
 
@@ -208,7 +208,7 @@ Success: Deploy command completed
 ✨ Success! Build completed.
 ```
 
-1 行目が `bun@1.4.0` に変わり、`Installing bun 1.4.0` の行が増えました。既定と違うバージョンを指定したため、ビルド環境が Bun を入れ直しています。依存関係のインストールを抜け、プレビュー版のアップロードまで到達しました。所要時間は 70 秒です。
+1 行目が `bun@1.4.0` に変わり、`Installing bun 1.4.0` の行が増えました。既定と違うバージョンを指定したため、ビルド環境が Bun を入れ直しています。
 
 Workers Builds は、ビルド 1 件ごとの記録にその時点のビルド変数を保存します。修正の前後を並べると、変わったのは変数だけです。
 
@@ -224,7 +224,7 @@ Workers Builds は、ビルド 1 件ごとの記録にその時点のビルド�
 - Cloudflare Workers Builds のビルドイメージには、Bun 1.2.15 が既定で入る。ドキュメントの表に Bun のバージョン指定ファイルの記載はなく、ビルド変数 `BUN_VERSION` で指定する
 - Workers Builds のビルド設定は、本番用とプレビュー用の 2 つのトリガーに分かれて保存される。ビルド変数もトリガーごとに独立している
 - ダッシュボードの「変数とシークレット」で保存した値は、本番トリガーにしか入らない。プレビュートリガーの変数は画面に表示されず、REST API でしか読み書きできない
-- プレビュートリガーに `BUN_VERSION` が届いているかは、ビルドログの `Detected the following tools from environment:` に出る Bun のバージョンで判断できる
+- プレビュートリガーに `BUN_VERSION` が設定されているかは、ビルドログの `Detected the following tools from environment:` に出る Bun のバージョンで判断できる
 
 ## 参考
 
